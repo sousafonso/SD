@@ -3,12 +3,20 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Servidor {
     private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>(); // Simula uma base de dados
     private static final Set<String> utilizadores = ConcurrentHashMap.newKeySet(); // Simula uma base de dados de utilizadores
     private static final int MAX_SESSOES = 5; // Exemplo de limite de conexões concorrentes
     private static final Semaphore semaphore = new Semaphore(MAX_SESSOES); // Semáforo para controlar o número de sessões
+    private static final Lock storageLock = new ReentrantLock();
+    private static final Lock sessionLock = new ReentrantLock();
+    private static final Condition sessionCondition = sessionLock.newCondition();
+    private static final Condition condition = storageLock.newCondition();
+    private static int currentSessions = 0;
 
     public static void main(String[] args) {
         try (ServerSocket serverSocket = new ServerSocket(12345)) {
@@ -84,47 +92,47 @@ public class Servidor {
                                 saida.writeInt(-1);
                             }
                             break;
-                        // case "MULTIPUT":
-                        //     int numPares = entrada.readInt();
-                        //     Map<String, byte[]> pares = new HashMap<>();
-                        //     for (int i = 0; i < numPares; i++) {
-                        //         String chave = entrada.readUTF();
-                        //         int tamanhoValor = entrada.readInt();
-                        //         byte[] valor = new byte[tamanhoValor];
-                        //         entrada.readFully(valor);
-                        //         pares.put(chave, valor);
-                        //     }
-                        //     multiPut(pares);
-                        //     saida.writeUTF("MULTIPUT OK");
-                        //     break;
-                        // case "MULTIGET":
-                        //     int numChaves = entrada.readInt();
-                        //     Set<String> chaves = new HashSet<>();
-                        //     for (int i = 0; i < numChaves; i++) {
-                        //         chaves.add(entrada.readUTF());
-                        //     }
-                        //     Map<String, byte[]> resultados = multiGet(chaves);
-                        //     saida.writeInt(resultados.size());
-                        //     for (Map.Entry<String, byte[]> entry : resultados.entrySet()) {
-                        //         saida.writeUTF(entry.getKey());
-                        //         saida.writeInt(entry.getValue().length);
-                        //         saida.write(entry.getValue());
-                        //     }
-                        //     break;
-                        // case "GETWHEN":
-                        //     chave = entrada.readUTF();
-                        //     String chaveCond = entrada.readUTF();
-                        //     int tamanhoValorCond = entrada.readInt();
-                        //     byte[] valorCond = new byte[tamanhoValorCond];
-                        //     entrada.readFully(valorCond);
-                        //     resultado = getWhen(chave, chaveCond, valorCond);
-                        //     if (resultado != null) {
-                        //         saida.writeInt(resultado.length);
-                        //         saida.write(resultado);
-                        //     } else {
-                        //         saida.writeInt(-1);
-                        //     }
-                        //     break;
+                        case "MULTIPUT":
+                            int numPares = entrada.readInt();
+                            Map<String, byte[]> pares = new HashMap<>();
+                            for (int i = 0; i < numPares; i++) {
+                                chave = entrada.readUTF();
+                                tamanhoValor = entrada.readInt();
+                                valor = new byte[tamanhoValor];
+                                entrada.readFully(valor);
+                                pares.put(chave, valor);
+                            }
+                            multiPut(pares);
+                            saida.writeUTF("MULTIPUT OK");
+                            break;
+                        case "MULTIGET":
+                            int numChaves = entrada.readInt();
+                            Set<String> chaves = new HashSet<>();
+                            for (int i = 0; i < numChaves; i++) {
+                                chaves.add(entrada.readUTF());
+                            }
+                            Map<String, byte[]> resultados = multiGet(chaves);
+                            saida.writeInt(resultados.size());
+                            for (Map.Entry<String, byte[]> entry : resultados.entrySet()) {
+                                saida.writeUTF(entry.getKey());
+                                saida.writeInt(entry.getValue().length);
+                                saida.write(entry.getValue());
+                            }
+                            break;
+                        case "GETWHEN":
+                            chave = entrada.readUTF();
+                            String chaveCond = entrada.readUTF();
+                            int tamanhoValorCond = entrada.readInt();
+                            byte[] valorCond = new byte[tamanhoValorCond];
+                            entrada.readFully(valorCond);
+                            resultado = getWhen(chave, chaveCond, valorCond);
+                            if (resultado != null) {
+                                saida.writeInt(resultado.length);
+                                saida.write(resultado);
+                            } else {
+                                saida.writeInt(-1);
+                            }
+                            break;
                         default:
                             saida.writeUTF("Comando desconhecido.");
                     }
@@ -141,37 +149,63 @@ public class Servidor {
             }
         }
 
-        private synchronized void put(String key, byte[] value) {
-            armazenamento.put(key, value);
-        }
-
-        private synchronized byte[] get(String key) {
-            return armazenamento.get(key);
-        }
-
-        private synchronized void multiPut(Map<String, byte[]> pairs) {
-            armazenamento.putAll(pairs);
-        }
-
-        private synchronized Map<String, byte[]> multiGet(Set<String> keys) {
-            Map<String, byte[]> resultados = new HashMap<>();
-            for (String key : keys) {
-                if (armazenamento.containsKey(key)) {
-                    resultados.put(key, armazenamento.get(key));
-                }
+        private void put(String key, byte[] value) {
+            storageLock.lock();
+            try {
+                armazenamento.put(key, value);
+                condition.signalAll();
+            } finally {
+                storageLock.unlock();
             }
-            return resultados;
         }
 
-        private synchronized byte[] getWhen(String key, String keyCond, byte[] valueCond) {
-            while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+        private byte[] get(String key) {
+            storageLock.lock();
+            try {
+                return armazenamento.get(key);
+            } finally {
+                storageLock.unlock();
             }
-            return armazenamento.get(key);
+        }
+
+        private void multiPut(Map<String, byte[]> pairs) {
+            storageLock.lock();
+            try {
+                armazenamento.putAll(pairs);
+                condition.signalAll();
+            } finally {
+                storageLock.unlock();
+            }
+        }
+
+        private Map<String, byte[]> multiGet(Set<String> keys) {
+            storageLock.lock();
+            try {
+                Map<String, byte[]> resultados = new HashMap<>();
+                for (String key : keys) {
+                    if (armazenamento.containsKey(key)) {
+                        resultados.put(key, armazenamento.get(key));
+                    }
+                }
+                return resultados;
+            } finally {
+                storageLock.unlock();
+            }
+        }
+
+        private byte[] getWhen(String key, String keyCond, byte[] valueCond) {
+            storageLock.lock();
+            try {
+                while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
+                    condition.await();
+                }
+                return armazenamento.get(key);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            } finally {
+                storageLock.unlock();
+            }
         }
     }
 }
