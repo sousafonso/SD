@@ -28,7 +28,7 @@ public class InterfaceCliente {
             String senha = scanner.nextLine();
 
             if (opcaoInicial == 1) {
-                BibliotecaCliente.registrarUtilizador(usuario, senha);
+                BibliotecaCliente.registarUtilizador(usuario, senha);
             } else if (opcaoInicial == 2) {
                 BibliotecaCliente.autenticarUtilizador(usuario, senha);
             } else {

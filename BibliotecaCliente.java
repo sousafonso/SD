@@ -15,9 +15,9 @@ public class BibliotecaCliente {
         cliente = new Cliente(host, porta);
     }
 
-    // Método para registrar o utilizador no servidor
-    public static void registrarUtilizador(String nome, String senha) throws IOException {
-        cliente.registrar(nome, senha);
+    // Método para registar o utilizador no servidor
+    public static void registarUtilizador(String nome, String senha) throws IOException {
+        cliente.registar(nome, senha);
     }
 
     // Método para autenticar o utilizador no servidor

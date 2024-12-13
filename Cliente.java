@@ -16,7 +16,7 @@ public class Cliente {
         this.saida = new DataOutputStream(socket.getOutputStream());
     }
 
-    public void registrar(String nome, String senha) throws IOException {
+    public void registar(String nome, String senha) throws IOException {
         saida.writeUTF("REGISTAR");
         saida.writeUTF(nome);
         saida.writeUTF(senha);
