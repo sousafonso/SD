@@ -5,6 +5,7 @@
 // InterfaceCliente.java
 import java.io.*;
 import java.util.*;
+import java.net.Socket;
 
 public class InterfaceCliente {
     public static void main(String[] args) {
@@ -16,7 +17,10 @@ public class InterfaceCliente {
             System.out.print("Digite a porta do servidor: ");
             int porta = Integer.parseInt(scanner.nextLine());
 
-            BibliotecaCliente.conectar(host, porta);
+            // Establish a single connection
+            Socket socket = new Socket(host, porta);
+            DataInputStream input = new DataInputStream(socket.getInputStream());
+            DataOutputStream output = new DataOutputStream(socket.getOutputStream());
 
             System.out.println("1. Registar\n2. Autenticar");
             System.out.print("Escolha uma opção: ");
@@ -28,9 +32,9 @@ public class InterfaceCliente {
             String senha = scanner.nextLine();
 
             if (opcaoInicial == 1) {
-                BibliotecaCliente.registarUtilizador(usuario, senha);
+                BibliotecaCliente.registarUtilizador(output, input, usuario, senha);
             } else if (opcaoInicial == 2) {
-                BibliotecaCliente.autenticarUtilizador(usuario, senha);
+                BibliotecaCliente.autenticarUtilizador(output, input, usuario, senha);
             } else {
                 System.out.println("Opção inválida.");
                 return;
@@ -48,12 +52,12 @@ public class InterfaceCliente {
                         String chave = scanner.nextLine();
                         System.out.print("Digite o valor: ");
                         String valor = scanner.nextLine();
-                        BibliotecaCliente.put(chave, valor.getBytes());
+                        BibliotecaCliente.put(output, input, chave, valor.getBytes());
                         break;
                     case 2:
                         System.out.print("Digite a chave: ");
                         chave = scanner.nextLine();
-                        byte[] resultado = BibliotecaCliente.get(chave);
+                        byte[] resultado = BibliotecaCliente.get(output, input, chave);
                         if (resultado != null) {
                             System.out.println("Valor: " + new String(resultado));
                         }
@@ -69,7 +73,7 @@ public class InterfaceCliente {
                             valor = scanner.nextLine();
                             pares.put(chave, valor.getBytes());
                         }
-                        BibliotecaCliente.multiPut(pares);
+                        BibliotecaCliente.multiPut(output, input, pares);
                         break;
                     case 4:
                         Set<String> chaves = new HashSet<>();
@@ -80,7 +84,7 @@ public class InterfaceCliente {
                             chave = scanner.nextLine();
                             chaves.add(chave);
                         }
-                        Map<String, byte[]> resultados = BibliotecaCliente.multiGet(chaves);
+                        Map<String, byte[]> resultados = BibliotecaCliente.multiGet(output, input, chaves);
                         for (Map.Entry<String, byte[]> entry : resultados.entrySet()) {
                             System.out.println("Chave: " + entry.getKey() + ", Valor: " + new String(entry.getValue()));
                         }
@@ -92,14 +96,14 @@ public class InterfaceCliente {
                         String chaveCond = scanner.nextLine();
                         System.out.print("Digite o valor condicional: ");
                         valor = scanner.nextLine();
-                        resultado = BibliotecaCliente.getWhen(chave, chaveCond, valor.getBytes());
+                        resultado = BibliotecaCliente.getWhen(output, input, chave, chaveCond, valor.getBytes());
                         if (resultado != null) {
                             System.out.println("Valor: " + new String(resultado));
                         }
                         break;
                     case 6:
                         executando = false;
-                        BibliotecaCliente.fecharConexao();
+                        BibliotecaCliente.fecharConexao(socket);
                         break;
                     default:
                         System.out.println("Opção inválida.");
