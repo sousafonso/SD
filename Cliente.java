@@ -9,9 +9,10 @@ public class Cliente {
     private Socket socket;
     private DataInputStream entrada;
     private DataOutputStream saida;
+    private static String HOST = "localhost"; 
 
-    public Cliente(String host, int porta) throws IOException {
-        this.socket = new Socket(host, porta);
+    public Cliente(int porta) throws IOException {
+        this.socket = new Socket(HOST, porta);
         this.entrada = new DataInputStream(socket.getInputStream());
         this.saida = new DataOutputStream(socket.getOutputStream());
     }
@@ -22,6 +23,9 @@ public class Cliente {
         saida.writeUTF(senha);
         String resposta = entrada.readUTF();
         System.out.println("Resposta do servidor: " + resposta);
+        if ("Utilizador já registado".equals(resposta)) {
+            System.out.println("O utilizador já se encontra registado.");
+        }
     }
 
     public void autenticar(String nome, String senha) throws IOException {
@@ -30,6 +34,9 @@ public class Cliente {
         saida.writeUTF(senha);
         String resposta = entrada.readUTF();
         System.out.println("Resposta do servidor: " + resposta);
+        if("Autenticação falhou".equals(resposta)) {
+            System.out.println("Erro. Tente novamente.");
+        }
     }
 
     public void put(String key, byte[] value) throws IOException {
