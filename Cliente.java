@@ -1,9 +1,9 @@
 // Cliente.java
 import java.io.*;
 import java.net.*;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashMap;
 
 public class Cliente {
     private Socket socket;
@@ -35,7 +35,7 @@ public class Cliente {
         saida.writeUTF(senha);
         String resposta = entrada.readUTF();
         System.out.println("Resposta do servidor: " + resposta);
-        if("Autenticação falhou".equals(resposta)) {
+        if("Autenticação falhou.".equals(resposta)) {
             return 0;
         }
         else return 1;
@@ -81,6 +81,9 @@ public class Cliente {
             saida.writeUTF(key);
         }
         int numResultados = entrada.readInt();
+        if (numResultados == 0) { 
+            System.out.println("Não existe valor associado às chaves pedidas.");
+        }
         Map<String, byte[]> resultados = new HashMap<>();
         for (int i = 0; i < numResultados; i++) {
             String chave = entrada.readUTF();
