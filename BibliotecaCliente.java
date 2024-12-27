@@ -4,15 +4,15 @@
 
 // BibliotecaCliente.java
 import java.io.*;
-import java.net.*;
+
 import java.util.*;
 
 public class BibliotecaCliente {
     private static Cliente cliente; // Instância da classe Cliente
 
     // Método para conectar ao servidor 
-    public static void conectar(String host, int porta) throws IOException {
-        cliente = new Cliente(host, porta);
+    public static void conectar(int porta) throws IOException {
+        cliente = new Cliente(porta);
     }
 
     // Método para registar o utilizador no servidor
