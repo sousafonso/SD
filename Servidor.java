@@ -94,6 +94,7 @@ public class Servidor {
                                 saida.writeUTF("Utilizador já registado");
                             }
                             break;
+
                         case "AUTENTICAR":
                             String utilizador = entrada.readUTF();
                             String senha = entrada.readUTF();
@@ -105,17 +106,19 @@ public class Servidor {
 
                             }
                             break;
+
                         case "PUT":
                             String chave = entrada.readUTF();
                             int tamanhoValor = entrada.readInt();
                             byte[] valor = new byte[tamanhoValor];
                             entrada.readFully(valor);
-                            put(chave, valor);
+                            handlePut(chave, valor);
                             saida.writeUTF("PUT OK");
                             break;
+
                         case "GET":
                             chave = entrada.readUTF();
-                            byte[] resultado = get(chave);
+                            byte[] resultado = handleGet(chave);
                             if (resultado != null) {
                                 saida.writeInt(resultado.length);
                                 saida.write(resultado);
@@ -123,6 +126,7 @@ public class Servidor {
                                 saida.writeInt(-1);
                             }
                             break;
+
                         case "MULTIPUT":
                             int numPares = entrada.readInt();
                             Map<String, byte[]> pares = new HashMap<>();
@@ -133,16 +137,17 @@ public class Servidor {
                                 entrada.readFully(valor);
                                 pares.put(chave, valor);
                             }
-                            multiPut(pares);
+                            handleMultiPut(pares);
                             saida.writeUTF("MULTIPUT OK");
                             break;
+
                         case "MULTIGET":
                             int numChaves = entrada.readInt();
                             Set<String> chaves = new HashSet<>();
                             for (int i = 0; i < numChaves; i++) {
                                 chaves.add(entrada.readUTF());
                             }
-                            Map<String, byte[]> resultados = multiGet(chaves);
+                            Map<String, byte[]> resultados = handleMultiGet(chaves);
                             saida.writeInt(resultados.size());
                             for (Map.Entry<String, byte[]> entry : resultados.entrySet()) {
                                 saida.writeUTF(entry.getKey());
@@ -150,13 +155,14 @@ public class Servidor {
                                 saida.write(entry.getValue());
                             }
                             break;
+
                         case "GETWHEN":
                             chave = entrada.readUTF();
                             String chaveCond = entrada.readUTF();
                             int tamanhoValorCond = entrada.readInt();
                             byte[] valorCond = new byte[tamanhoValorCond];
                             entrada.readFully(valorCond);
-                            resultado = getWhen(chave, chaveCond, valorCond);
+                            resultado = handleGetWhen(chave, chaveCond, valorCond);
                             if (resultado != null) {
                                 saida.writeInt(resultado.length);
                                 saida.write(resultado);
@@ -180,7 +186,7 @@ public class Servidor {
             }
         }
 
-        private void put(String key, byte[] value) {
+        private void handlePut(String key, byte[] value) {
             lock.lock();
             try {
                 armazenamento.put(key, value);
@@ -190,7 +196,7 @@ public class Servidor {
             }
         }
 
-        private byte[] get(String key) {
+        private byte[] handleGet(String key) {
             lock.lock();
             try {
                 return armazenamento.get(key);
@@ -199,7 +205,7 @@ public class Servidor {
             }
         }
 
-        private void multiPut(Map<String, byte[]> pairs) {
+        private void handleMultiPut(Map<String, byte[]> pairs) {
             lock.lock();
             try {
                 armazenamento.putAll(pairs);
@@ -209,7 +215,7 @@ public class Servidor {
             }
         }
 
-        private Map<String, byte[]> multiGet(Set<String> keys) {
+        private Map<String, byte[]> handleMultiGet(Set<String> keys) {
             lock.lock();
             try {
                 Map<String, byte[]> resultados = new HashMap<>();
@@ -224,7 +230,7 @@ public class Servidor {
             }
         }
 
-        private byte[] getWhen(String key, String keyCond, byte[] valueCond) {
+        private byte[] handleGetWhen(String key, String keyCond, byte[] valueCond) {
             lock.lock();
             try {
                 while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
