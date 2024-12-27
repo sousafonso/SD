@@ -17,26 +17,28 @@ public class Cliente {
         this.saida = new DataOutputStream(socket.getOutputStream());
     }
 
-    public void registar(String nome, String senha) throws IOException {
+    public int registar(String nome, String senha) throws IOException {
         saida.writeUTF("REGISTAR");
         saida.writeUTF(nome);
         saida.writeUTF(senha);
         String resposta = entrada.readUTF();
         System.out.println("Resposta do servidor: " + resposta);
         if ("Utilizador já registado".equals(resposta)) {
-            System.out.println("O utilizador já se encontra registado.");
+            return 0;
         }
+        else return 1;
     }
 
-    public void autenticar(String nome, String senha) throws IOException {
+    public int autenticar(String nome, String senha) throws IOException {
         saida.writeUTF("AUTENTICAR");
         saida.writeUTF(nome);
         saida.writeUTF(senha);
         String resposta = entrada.readUTF();
         System.out.println("Resposta do servidor: " + resposta);
         if("Autenticação falhou".equals(resposta)) {
-            System.out.println("Erro. Tente novamente.");
+            return 0;
         }
+        else return 1;
     }
 
     public void put(String key, byte[] value) throws IOException {

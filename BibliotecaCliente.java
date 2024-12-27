@@ -16,13 +16,13 @@ public class BibliotecaCliente {
     }
 
     // Método para registar o utilizador no servidor
-    public static void registarUtilizador(String nome, String senha) throws IOException {
-        cliente.registar(nome, senha);
+    public static int registarUtilizador(String nome, String senha) throws IOException {
+        return cliente.registar(nome, senha);
     }
 
     // Método para autenticar o utilizador no servidor
-    public static void autenticarUtilizador(String nome, String senha) throws IOException {
-        cliente.autenticar(nome, senha);
+    public static int autenticarUtilizador(String nome, String senha) throws IOException {
+        return cliente.autenticar(nome, senha);
     }
 
     // Método para armazenar um valor associado a uma chave
