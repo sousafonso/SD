@@ -110,8 +110,11 @@ public class Cliente {
     }
 
     public void fechar() throws IOException {
-        entrada.close();
-        saida.close();
-        socket.close();
+        saida.writeUTF("EXIT");
+        saida.flush();
+
+        //entrada.close();
+        //saida.close();
+        //socket.close();
     }
 }

@@ -170,6 +170,10 @@ public class Servidor {
                                 saida.writeInt(-1);
                             }
                             break;
+
+                        case "EXIT" : 
+                            System.out.println("Cliente desconectado");
+                            break;
                         default:
                             saida.writeUTF("Comando desconhecido.");
                     }
