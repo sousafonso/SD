@@ -1,4 +1,3 @@
-// Cliente.java
 import java.io.*;
 import java.net.*;
 import java.util.HashMap;
@@ -115,9 +114,5 @@ public class Cliente {
     public void fechar() throws IOException {
         saida.writeUTF("EXIT");
         saida.flush();
-
-        //entrada.close();
-        //saida.close();
-        //socket.close();
     }
 }
