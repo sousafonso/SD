@@ -10,7 +10,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class Servidor {
     private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>(); // Simula uma base de dados
     private static final Set<String> utilizadores = ConcurrentHashMap.newKeySet(); // Simula uma base de dados de utilizadores
-    private static final int MAX_SESSOES = 5; // Exemplo de limite de conexões concorrentes
+    private static final int MAX_SESSOES = 1; // Exemplo de limite de conexões concorrentes
     private static final Semaphore semaphore = new Semaphore(MAX_SESSOES); // Semáforo para controlar o número de sessões
     private static final Lock lock = new ReentrantLock();
     private static final Lock sessionLock = new ReentrantLock();
@@ -38,9 +38,9 @@ public class Servidor {
                     } finally {
                         lock.unlock();
                     }
-
+                    
                     try {
-                        new AtendedorDeCliente(clienteSocket);
+                        new Thread(new AtendedorDeCliente(clienteSocket)).start();
                     } finally {
                         lock.lock();
                         try {

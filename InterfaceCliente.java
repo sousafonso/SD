@@ -9,40 +9,46 @@ import java.net.Socket;
 
 public class InterfaceCliente {
     public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
         try {
-            Scanner scanner = new Scanner(System.in);
-
             System.out.print("Digite a porta do servidor: ");
             int porta = Integer.parseInt(scanner.nextLine());
 
             // Estabelecer conexão
             BibliotecaCliente.conectar(porta);
-
-            System.out.println("1. Registar\n2. Autenticar\n3. Sair");
-            System.out.print("Escolha uma opção: ");
-            int opcaoInicial = Integer.parseInt(scanner.nextLine());
-
-            if (opcaoInicial == 1) {
-                System.out.println("Digite o seu nome de utilizador: ");
-                String nome = scanner.nextLine();
-                System.out.println("Insira a sua senha: ");
-                String senha = scanner.nextLine();
-                BibliotecaCliente.registarUtilizador(nome, senha);
-                System.out.println("Registo bem sucedido. Efetue a autenticação");                
-            } else if (opcaoInicial == 2) {
-                System.out.println("Digite o seu nome de utilizador: ");
-                String nome = scanner.nextLine();
-                System.out.println("Insira a sua senha: ");
-                String senha = scanner.nextLine();
-                BibliotecaCliente.autenticarUtilizador(nome, senha);
-                System.out.println("Auntenticação bem-sucedida.");
-            } else if (opcaoInicial == 3) {
-                BibliotecaCliente.fecharConexao();
-                System.out.println("Conexão encerrada");
-                return;
-            } else {
-                System.out.println("Opção inválida.");
-                return;
+            
+            int flag = 0;
+            while (flag == 0){
+                System.out.println("1. Registar\n2. Autenticar\n3. Sair");
+                System.out.print("Escolha uma opção: ");
+                int opcaoInicial = Integer.parseInt(scanner.nextLine());
+            
+                if (opcaoInicial == 1) {
+                    System.out.println("Digite o seu nome de utilizador: ");
+                    String nome = scanner.nextLine();
+                    System.out.println("Insira a sua senha: ");
+                    String senha = scanner.nextLine();
+                    int res = BibliotecaCliente.registarUtilizador(nome, senha);
+                    if (res == 1){
+                        flag = 1;
+                    }    
+                } else if (opcaoInicial == 2) {
+                    System.out.println("Digite o seu nome de utilizador: ");
+                    String nome = scanner.nextLine();
+                    System.out.println("Insira a sua senha: ");
+                    String senha = scanner.nextLine();
+                    int res = BibliotecaCliente.autenticarUtilizador(nome, senha);
+                    if (res == 1){
+                        flag = 1;
+                    }
+                } else if (opcaoInicial == 3) {
+                    BibliotecaCliente.fecharConexao();
+                    System.out.println("Conexão encerrada");
+                    return;
+                } else {
+                    System.out.println("Opção inválida.");
+                    return;
+                }
             }
 
             boolean executando = true;
@@ -118,6 +124,8 @@ public class InterfaceCliente {
             }
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            scanner.close();
         }
     }
 }
