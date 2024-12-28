@@ -1,13 +1,23 @@
 /*
- * @description: Classe que implementa a interface de comunicação com o servidor.
+ * Nome: BibliotecaCliente.java
+ * Descrição: abstrai a comunicação com o servidor.
  */
 
 import java.io.*;
 import java.util.*;
 
+/*
+ * Classe BibliotecaCliente.
+ * 
+ * Esta classe facilita a troca de informação entre o cliente e o servidor, sem que a 
+ * interface precise de lidar diretamente com os detalhes da comunicação. Para isso,
+ * utiliza uma instância da classe Cliente para serem enviadas mensagens ao servidor.
+ */
+
 public class BibliotecaCliente {
     private static Cliente cliente; 
 
+    // cria uma conexão com o servidor
     public static void conectar(int porta) throws IOException {
         cliente = new Cliente(porta);
     }

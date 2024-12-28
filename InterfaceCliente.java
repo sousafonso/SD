@@ -1,9 +1,17 @@
 /*
- * @description: Classe que implementa a interface do cliente.
+ * Nome: InterfaceCliente.java
+ * Descrição: permite a interação entre o utilizador e o serviço utilizando.
  */
 
 import java.io.*;
 import java.util.*;
+
+/*
+ * Classe InterfaceCliente
+ * 
+ * Esta classe proporciona um menu para que o utilizador interaja com o sistema, através
+ * da utilização de métodos de uma biblioteca relativa ao cliente.
+ */
 
 public class InterfaceCliente {
     public static void main(String[] args) {
@@ -12,10 +20,10 @@ public class InterfaceCliente {
             System.out.print("Digite a porta do servidor: ");
             int porta = Integer.parseInt(scanner.nextLine());
 
-            // Estabelecer conexão
+            // estabelece conexão
             BibliotecaCliente.conectar(porta);
             
-            int flag = 0;
+            int flag = 0;      
             while (flag == 0){
                 System.out.println("1. Registar\n2. Autenticar\n3. Sair");
                 System.out.print("Escolha uma opção: ");
