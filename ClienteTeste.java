@@ -14,10 +14,12 @@ public class ClienteTeste {
         temposTotais.put("PUT", new LongAdder());
         temposTotais.put("GET", new LongAdder());
         temposTotais.put("MULTIPUT", new LongAdder());
+        temposTotais.put("MULTIGET", new LongAdder()); 
         temposTotais.put("GETWHEN", new LongAdder());
         contadoresOperacoes.put("PUT", new LongAdder());
         contadoresOperacoes.put("GET", new LongAdder());
         contadoresOperacoes.put("MULTIPUT", new LongAdder());
+        contadoresOperacoes.put("MULTIGET", new LongAdder());
         contadoresOperacoes.put("GETWHEN", new LongAdder());
     }
 
@@ -32,7 +34,7 @@ public class ClienteTeste {
                     Random random = new Random();
 
                     for (int j = 0; j < NUM_OPERACOES; j++) {
-                        int operacao = random.nextInt(4); // Escolher operação aleatória
+                        int operacao = random.nextInt(5); // Escolher operação aleatória
                         String key = "chave" + random.nextInt(10);
                         String value = "valor" + random.nextInt(10);
 
@@ -74,6 +76,17 @@ public class ClienteTeste {
                                 fim = System.nanoTime();
                                 temposTotais.get("GETWHEN").add(fim - inicio);
                                 contadoresOperacoes.get("GETWHEN").increment();
+                                break;
+                            case 4:// MULTIGET
+                                Set<String> keys = new HashSet<>();
+                                for (int k = 0; k < 3; k++) {
+                                    keys.add("chave" + random.nextInt(10));
+                                }
+                                inicio = System.nanoTime();
+                                cliente.multiGet(keys);
+                                fim = System.nanoTime();
+                                temposTotais.get("MULTIGET").add(fim - inicio);
+                                contadoresOperacoes.get("MULTIGET").increment();
                                 break;
                         }
                     }
