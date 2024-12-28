@@ -1,35 +1,43 @@
-// Cliente.java
 import java.io.*;
 import java.net.*;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashMap;
 
 public class Cliente {
     private Socket socket;
     private DataInputStream entrada;
     private DataOutputStream saida;
+    private static String HOST = "localhost"; 
 
-    public Cliente(String host, int porta) throws IOException {
-        this.socket = new Socket(host, porta);
+    public Cliente(int porta) throws IOException {
+        this.socket = new Socket(HOST, porta);
         this.entrada = new DataInputStream(socket.getInputStream());
         this.saida = new DataOutputStream(socket.getOutputStream());
     }
 
-    public void registar(String nome, String senha) throws IOException {
+    public int registar(String nome, String senha) throws IOException {
         saida.writeUTF("REGISTAR");
         saida.writeUTF(nome);
         saida.writeUTF(senha);
         String resposta = entrada.readUTF();
         System.out.println("Resposta do servidor: " + resposta);
+        if ("Utilizador já registado".equals(resposta)) {
+            return 0;
+        }
+        else return 1;
     }
 
-    public void autenticar(String nome, String senha) throws IOException {
+    public int autenticar(String nome, String senha) throws IOException {
         saida.writeUTF("AUTENTICAR");
         saida.writeUTF(nome);
         saida.writeUTF(senha);
         String resposta = entrada.readUTF();
         System.out.println("Resposta do servidor: " + resposta);
+        if("Autenticação falhou.".equals(resposta)) {
+            return 0;
+        }
+        else return 1;
     }
 
     public void put(String key, byte[] value) throws IOException {
@@ -72,6 +80,9 @@ public class Cliente {
             saida.writeUTF(key);
         }
         int numResultados = entrada.readInt();
+        if (numResultados == 0) { 
+            System.out.println("Não existe valor associado às chaves pedidas.");
+        }
         Map<String, byte[]> resultados = new HashMap<>();
         for (int i = 0; i < numResultados; i++) {
             String chave = entrada.readUTF();
@@ -101,8 +112,7 @@ public class Cliente {
     }
 
     public void fechar() throws IOException {
-        entrada.close();
-        saida.close();
-        socket.close();
+        saida.writeUTF("EXIT");
+        saida.flush();
     }
 }

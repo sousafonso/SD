@@ -1,4 +1,3 @@
-// Servidor.java
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -8,83 +7,107 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class Servidor {
-    private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>(); // Simula uma base de dados
-    private static final Set<String> utilizadores = ConcurrentHashMap.newKeySet(); // Simula uma base de dados de utilizadores
-    private static final int MAX_SESSOES = 5; // Exemplo de limite de conexões concorrentes
-    private static final Semaphore semaphore = new Semaphore(MAX_SESSOES); // Semáforo para controlar o número de sessões
-    private static final Lock storageLock = new ReentrantLock();
-    private static final Lock sessionLock = new ReentrantLock();
-    private static final Condition sessionCondition = sessionLock.newCondition();
-    private static final Condition condition = storageLock.newCondition();
+    private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>();
+    private static final Map<String, String> utilizadores = new ConcurrentHashMap<>(); 
+    private static final int MAX_SESSOES = 5; 
+    private static final Lock lock = new ReentrantLock();
+    // private static final Lock sessionLock = new ReentrantLock();
+    private static final Lock keyValueStoreLock = new ReentrantLock();
+    // private static final Condition sessionCondition = sessionLock.newCondition();
+    private static final Condition condition = lock.newCondition();
     private static int currentSessions = 0;
+    private static final Map<String, Map<String, Condition>> chaveValorConditions = new ConcurrentHashMap<>();
+
 
     public static void main(String[] args) {
         try (ServerSocket serverSocket = new ServerSocket(12345)) {
             System.out.println("Servidor iniciado na porta 12345...");
             while (true) {
                 Socket clienteSocket = serverSocket.accept();
-                if (semaphore.tryAcquire()) {
-                    new Thread(new AtendedorDeCliente(clienteSocket)).start();
-                } else {
-                    clienteSocket.close();
-                    System.out.println("Conexão recusada: limite de sessões atingido.");
-                }
+
+                new Thread(() -> {
+                    lock.lock();
+                    try {
+                        while (currentSessions >= MAX_SESSOES) {
+                            System.out.println("Sessões máximas atingidas. Cliente à espera.");
+                            condition.await();
+                        }
+                        currentSessions++;
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    } finally {
+                        lock.unlock();
+                    }
+                    
+                    try {
+                       handleClient(clienteSocket);
+                    } finally {
+                        lock.lock();
+                        try {
+                            currentSessions--;
+                            condition.signal();
+                        } finally {
+                            lock.unlock();
+                        }
+                    }
+                }).start();
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static boolean autenticarUsuario(String nome, String senha) {
-        return utilizadores.contains(nome + senha);
+    private static boolean autenticarUser(String nome, String senha) {
+        return senha.equals(utilizadores.get(nome));
     }
 
-    public static void registarUsuario(String nome, String senha) {
-        utilizadores.add(nome + senha);
+    private static boolean registarUser(String nome, String senha) {
+        return utilizadores.putIfAbsent(nome, senha) == null;
     }
 
-    static class AtendedorDeCliente implements Runnable {
-        private final Socket socket;
-
-        AtendedorDeCliente(Socket socket) {
-            this.socket = socket;
-        }
-
-        @Override
-        public void run() {
-            try (DataInputStream entrada = new DataInputStream(socket.getInputStream());
-                 DataOutputStream saida = new DataOutputStream(socket.getOutputStream())) {
-
-                // Processamento de comandos
-                while (true) {
+    public static void handleClient(Socket socket) {
+        try (socket;
+             DataInputStream entrada = new DataInputStream(socket.getInputStream());
+             DataOutputStream saida = new DataOutputStream(socket.getOutputStream())) {
+    
+            while (true) {
+                try {
                     String comando = entrada.readUTF();
                     switch (comando) {
                         case "REGISTAR":
-                            String novoUsuario = entrada.readUTF();
+                            String novoUtilizador = entrada.readUTF();
                             String novaSenha = entrada.readUTF();
-                            registarUsuario(novoUsuario, novaSenha);
-                            saida.writeUTF("Registro bem-sucedido.");
-                            break;
-                        case "AUTENTICAR":
-                            String usuario = entrada.readUTF();
-                            String senha = entrada.readUTF();
-                            if (!autenticarUsuario(usuario, senha)) {
-                                saida.writeUTF("Autenticação falhou.");
-                                return;
+                            if (registarUser(novoUtilizador, novaSenha)) {
+                                saida.writeUTF("Registo bem-sucedido.");
+                            } else {
+                                saida.writeUTF("Utilizador já registado");
                             }
-                            saida.writeUTF("Autenticação bem-sucedida.");
                             break;
+    
+                        case "AUTENTICAR":
+                            String utilizador = entrada.readUTF();
+                            String senha = entrada.readUTF();
+                            if (!autenticarUser(utilizador, senha)) {
+                                saida.writeUTF("Autenticação falhou.");
+                                break;
+                            } else {
+                                saida.writeUTF("Autenticação bem-sucedida.");
+                            }
+                            break;
+    
                         case "PUT":
                             String chave = entrada.readUTF();
                             int tamanhoValor = entrada.readInt();
                             byte[] valor = new byte[tamanhoValor];
                             entrada.readFully(valor);
-                            put(chave, valor);
-                            saida.writeUTF("PUT OK");
+                            handlePut(chave, valor);
+                            saida.writeUTF("Comando PUT bem sucedido");
                             break;
+    
                         case "GET":
                             chave = entrada.readUTF();
-                            byte[] resultado = get(chave);
+                            byte[] resultado = handleGet(chave);
                             if (resultado != null) {
                                 saida.writeInt(resultado.length);
                                 saida.write(resultado);
@@ -92,32 +115,13 @@ public class Servidor {
                                 saida.writeInt(-1);
                             }
                             break;
+    
                         case "MULTIPUT":
-                            int numPares = entrada.readInt();
-                            Map<String, byte[]> pares = new HashMap<>();
-                            for (int i = 0; i < numPares; i++) {
-                                chave = entrada.readUTF();
-                                tamanhoValor = entrada.readInt();
-                                valor = new byte[tamanhoValor];
-                                entrada.readFully(valor);
-                                pares.put(chave, valor);
-                            }
-                            multiPut(pares);
-                            saida.writeUTF("MULTIPUT OK");
+                            handleMultiPut(entrada, saida);
                             break;
+    
                         case "MULTIGET":
-                            int numChaves = entrada.readInt();
-                            Set<String> chaves = new HashSet<>();
-                            for (int i = 0; i < numChaves; i++) {
-                                chaves.add(entrada.readUTF());
-                            }
-                            Map<String, byte[]> resultados = multiGet(chaves);
-                            saida.writeInt(resultados.size());
-                            for (Map.Entry<String, byte[]> entry : resultados.entrySet()) {
-                                saida.writeUTF(entry.getKey());
-                                saida.writeInt(entry.getValue().length);
-                                saida.write(entry.getValue());
-                            }
+                            handleMultiGet(entrada,saida);
                             break;
                         case "GETWHEN":
                             chave = entrada.readUTF();
@@ -125,7 +129,7 @@ public class Servidor {
                             int tamanhoValorCond = entrada.readInt();
                             byte[] valorCond = new byte[tamanhoValorCond];
                             entrada.readFully(valorCond);
-                            resultado = getWhen(chave, chaveCond, valorCond);
+                            resultado = handleGetWhen(chave, chaveCond, valorCond);
                             if (resultado != null) {
                                 saida.writeInt(resultado.length);
                                 saida.write(resultado);
@@ -133,79 +137,187 @@ public class Servidor {
                                 saida.writeInt(-1);
                             }
                             break;
+    
+                        case "EXIT":
+                            System.out.println("Cliente desconectado.");
+                            return; 
+    
                         default:
                             saida.writeUTF("Comando desconhecido.");
                     }
+                } catch (EOFException e) {
+                    System.out.println("Conexão encerrada pelo cliente.");
+                    return; 
                 }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                socket.close();
             } catch (IOException e) {
                 e.printStackTrace();
-            } finally {
-                semaphore.release();
-                try {
-                    socket.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        private void put(String key, byte[] value) {
-            storageLock.lock();
-            try {
-                armazenamento.put(key, value);
-                condition.signalAll();
-            } finally {
-                storageLock.unlock();
-            }
-        }
-
-        private byte[] get(String key) {
-            storageLock.lock();
-            try {
-                return armazenamento.get(key);
-            } finally {
-                storageLock.unlock();
-            }
-        }
-
-        private void multiPut(Map<String, byte[]> pairs) {
-            storageLock.lock();
-            try {
-                armazenamento.putAll(pairs);
-                condition.signalAll();
-            } finally {
-                storageLock.unlock();
-            }
-        }
-
-        private Map<String, byte[]> multiGet(Set<String> keys) {
-            storageLock.lock();
-            try {
-                Map<String, byte[]> resultados = new HashMap<>();
-                for (String key : keys) {
-                    if (armazenamento.containsKey(key)) {
-                        resultados.put(key, armazenamento.get(key));
-                    }
-                }
-                return resultados;
-            } finally {
-                storageLock.unlock();
-            }
-        }
-
-        private byte[] getWhen(String key, String keyCond, byte[] valueCond) {
-            storageLock.lock();
-            try {
-                while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
-                    condition.await();
-                }
-                return armazenamento.get(key);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            } finally {
-                storageLock.unlock();
             }
         }
     }
+
+    private static void handlePut(String key, byte[] value) {
+        keyValueStoreLock.lock();
+        try {
+            armazenamento.put(key, value);
+    
+            Map<String, Condition> valorConditions = chaveValorConditions.get(key);
+            
+            if (valorConditions != null) {
+                String valorString = Arrays.toString(value);
+                Condition cond = valorConditions.get(valorString);
+                if (cond != null) {
+                    cond.signalAll(); 
+                }
+            }
+        } finally {
+            keyValueStoreLock.unlock();
+        }
+    }
+
+    private static byte[] handleGet(String key) {
+        keyValueStoreLock.lock();
+        try {
+            System.out.println("GET: Cliente pediu o valor da chave '" + key + "'.");
+            return armazenamento.get(key);
+        } finally {
+            keyValueStoreLock.unlock();
+        }
+    }
+
+    private static void handleMultiPut(DataInputStream in, DataOutputStream out) throws IOException {
+        int numPairs = in.readInt();
+        Map<String, byte[]> tempStore = new HashMap<>();
+        Map<String, byte[]> backupStore = new HashMap<>();
+
+
+        keyValueStoreLock.lock();
+        try {
+            // Lê todas as entradas do cliente
+            for (int i = 0; i < numPairs; i++) {
+                String key = in.readUTF();
+                int valueSize = in.readInt();
+                byte[] value = new byte[valueSize];
+                in.readFully(value);
+                tempStore.put(key, value);
+            }
+
+            // fazer backup das chaves existentes
+            for (String key : tempStore.keySet()) {
+                if (armazenamento.containsKey(key)) {
+                    backupStore.put(key, armazenamento.get(key));
+                } else {
+                    backupStore.put(key, null);
+                }
+            }
+
+            for (Map.Entry<String, byte[]> entry : tempStore.entrySet()) {
+                String key = entry.getKey();
+                byte[] value = entry.getValue();
+
+                armazenamento.put(key, value);
+    
+                Map<String, Condition> valorConditions = chaveValorConditions.get(key);
+
+                if (valorConditions != null) {
+                    String valorString = Arrays.toString(value);
+                    Condition cond = valorConditions.get(valorString);
+                    if (cond != null) {
+                        cond.signalAll(); // Acorda threads aguardando por esta combinação
+                    }
+                }
+            }
+    
+            out.writeUTF("Operação MultiPut com sucesso.");
+        } catch (Exception e) {
+            // Reverter alterações em caso de falha
+            for (Map.Entry<String, byte[]> entry : backupStore.entrySet()) {
+                if (entry.getValue() == null) {
+                    armazenamento.remove(entry.getKey());
+                } else {
+                    armazenamento.put(entry.getKey(), entry.getValue());
+                }
+            }
+            out.writeUTF("Erro ao executar MULTIPUT. Alterações revertidas.");
+        } finally {
+            keyValueStoreLock.unlock();
+        }
+    }
+
+    private static void handleMultiGet(DataInputStream in, DataOutputStream out) throws IOException {
+        int numKeys = in.readInt();
+        List<String> keys = new ArrayList<>();
+        Map<String, byte[]> result = new HashMap<>();
+      
+        try {
+            for (int i = 0; i < numKeys; i++) {
+                keys.add(in.readUTF());
+            }
+        
+            keyValueStoreLock.lock(); 
+
+            try {
+                System.out.println("MULTIGET: Cliente pediu os valores das chaves " + keys + ".");
+                for (String key : keys) {
+                    byte[] value = armazenamento.get(key);
+                    if (value != null) {
+                        result.put(key, value);
+                    }
+                }
+            } finally {
+                keyValueStoreLock.unlock();     
+            }
+        
+            // Enviar os resultados ao cliente
+            out.writeInt(result.size());
+            for (Map.Entry<String, byte[]> entry : result.entrySet()) {
+                out.writeUTF(entry.getKey());
+                out.writeInt(entry.getValue().length);
+                out.write(entry.getValue());
+            }
+        } catch (Exception e) {
+            // Em caso de erro, não enviar resultados parciais
+            out.writeInt(0);
+        }
+    }
+
+    private static byte[] handleGetWhen(String key, String keyCond, byte[] valueCond) {
+        keyValueStoreLock.lock();
+        try {
+            System.out.println("GETWHEN: O cliente está à espera que a chave " + keyCond + " tenha o valor esperado.");
+            if (Arrays.equals(armazenamento.get(keyCond), valueCond)) {
+                System.out.println("GETWHEN: Condição já satisfeita para chave '" + keyCond + "'. Retornando diretamente o valor de '" + key + "'.");
+                return armazenamento.get(key);
+            }
+
+            Map<String, Condition> valorConditions = chaveValorConditions.computeIfAbsent(keyCond, k -> new HashMap<>());
+    
+            String valorCondString = Arrays.toString(valueCond);
+
+            Condition cond = valorConditions.computeIfAbsent(valorCondString, v -> keyValueStoreLock.newCondition());
+
+
+            while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
+                try {
+                    cond.await(); 
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+    
+            System.out.println("GETWHEN: A condição foi satisfeita para a chave: " + keyCond + "'. Retornei o valor da chave: " + key + "'.");  
+
+            return armazenamento.get(key);
+        } finally {
+            keyValueStoreLock.unlock();
+        }
+    }
+
+    
 }
