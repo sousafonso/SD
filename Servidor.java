@@ -9,7 +9,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class Servidor {
     private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>();
     private static final Map<String, String> utilizadores = new ConcurrentHashMap<>(); 
-    private static final int MAX_SESSOES = 5; 
+    private static final int MAX_SESSOES = 100; 
     private static final Lock lock = new ReentrantLock();
     // private static final Lock sessionLock = new ReentrantLock();
     private static final Lock keyValueStoreLock = new ReentrantLock();
