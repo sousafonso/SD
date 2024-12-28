@@ -7,16 +7,17 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class Servidor {
-    private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>(); // Simula uma base de dados
+    private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>();
     private static final Map<String, String> utilizadores = new ConcurrentHashMap<>(); 
-    private static final int MAX_SESSOES = 1; // limite de conexões concorrentes
+    private static final int MAX_SESSOES = 5; 
     private static final Lock lock = new ReentrantLock();
     // private static final Lock sessionLock = new ReentrantLock();
     private static final Lock keyValueStoreLock = new ReentrantLock();
     // private static final Condition sessionCondition = sessionLock.newCondition();
     private static final Condition condition = lock.newCondition();
     private static int currentSessions = 0;
-    private static final Map<String, Condition> chaveConditions = new HashMap<>();
+    private static final Map<String, Map<String, Condition>> chaveValorConditions = new ConcurrentHashMap<>();
+
 
     public static void main(String[] args) {
         try (ServerSocket serverSocket = new ServerSocket(12345)) {
@@ -70,7 +71,6 @@ public class Servidor {
              DataInputStream entrada = new DataInputStream(socket.getInputStream());
              DataOutputStream saida = new DataOutputStream(socket.getOutputStream())) {
     
-            // Processamento de comandos
             while (true) {
                 try {
                     String comando = entrada.readUTF();
@@ -102,7 +102,7 @@ public class Servidor {
                             byte[] valor = new byte[tamanhoValor];
                             entrada.readFully(valor);
                             handlePut(chave, valor);
-                            saida.writeUTF("PUT OK");
+                            saida.writeUTF("Comando PUT bem sucedido");
                             break;
     
                         case "GET":
@@ -165,10 +165,15 @@ public class Servidor {
         keyValueStoreLock.lock();
         try {
             armazenamento.put(key, value);
-
-            Condition cond = chaveConditions.get(key);
-            if (cond != null) {
-                cond.signalAll();
+    
+            Map<String, Condition> valorConditions = chaveValorConditions.get(key);
+            
+            if (valorConditions != null) {
+                String valorString = Arrays.toString(value);
+                Condition cond = valorConditions.get(valorString);
+                if (cond != null) {
+                    cond.signalAll(); 
+                }
             }
         } finally {
             keyValueStoreLock.unlock();
@@ -178,6 +183,7 @@ public class Servidor {
     private static byte[] handleGet(String key) {
         keyValueStoreLock.lock();
         try {
+            System.out.println("GET: Cliente pediu o valor da chave '" + key + "'.");
             return armazenamento.get(key);
         } finally {
             keyValueStoreLock.unlock();
@@ -188,8 +194,9 @@ public class Servidor {
         int numPairs = in.readInt();
         Map<String, byte[]> tempStore = new HashMap<>();
         Map<String, byte[]> backupStore = new HashMap<>();
-        // List<String> lockedKeys = new ArrayList<>();
 
+
+        keyValueStoreLock.lock();
         try {
             // Lê todas as entradas do cliente
             for (int i = 0; i < numPairs; i++) {
@@ -200,9 +207,6 @@ public class Servidor {
                 tempStore.put(key, value);
             }
 
-            // bloqueio global para evitar inconsistências
-            keyValueStoreLock.lock();
-
             // fazer backup das chaves existentes
             for (String key : tempStore.keySet()) {
                 if (armazenamento.containsKey(key)) {
@@ -211,17 +215,25 @@ public class Servidor {
                     backupStore.put(key, null);
                 }
             }
+
             for (Map.Entry<String, byte[]> entry : tempStore.entrySet()) {
-                armazenamento.put(entry.getKey(), entry.getValue());
+                String key = entry.getKey();
+                byte[] value = entry.getValue();
+
+                armazenamento.put(key, value);
     
-                // Notificar threads associadas à chave alterada
-                Condition cond = chaveConditions.get(entry.getKey());
-                if (cond != null) {
-                    cond.signalAll();
+                Map<String, Condition> valorConditions = chaveValorConditions.get(key);
+
+                if (valorConditions != null) {
+                    String valorString = Arrays.toString(value);
+                    Condition cond = valorConditions.get(valorString);
+                    if (cond != null) {
+                        cond.signalAll(); // Acorda threads aguardando por esta combinação
+                    }
                 }
             }
     
-            out.writeUTF("MULTIPUT OK");
+            out.writeUTF("Operação MultiPut com sucesso.");
         } catch (Exception e) {
             // Reverter alterações em caso de falha
             for (Map.Entry<String, byte[]> entry : backupStore.entrySet()) {
@@ -243,7 +255,6 @@ public class Servidor {
         Map<String, byte[]> result = new HashMap<>();
       
         try {
-            // Ler as chaves solicitadas do cliente
             for (int i = 0; i < numKeys; i++) {
                 keys.add(in.readUTF());
             }
@@ -251,7 +262,7 @@ public class Servidor {
             keyValueStoreLock.lock(); 
 
             try {
-                // Ler valores correspondentes às chaves
+                System.out.println("MULTIGET: Cliente pediu os valores das chaves " + keys + ".");
                 for (String key : keys) {
                     byte[] value = armazenamento.get(key);
                     if (value != null) {
@@ -259,7 +270,7 @@ public class Servidor {
                     }
                 }
             } finally {
-                keyValueStoreLock.unlock(); 
+                keyValueStoreLock.unlock();     
             }
         
             // Enviar os resultados ao cliente
@@ -278,43 +289,35 @@ public class Servidor {
     private static byte[] handleGetWhen(String key, String keyCond, byte[] valueCond) {
         keyValueStoreLock.lock();
         try {
-            Condition cond = chaveConditions.computeIfAbsent(keyCond, k -> keyValueStoreLock.newCondition());
-            
-            // Bloqueia enquanto a condição não for satisfeita
+            System.out.println("GETWHEN: O cliente está à espera que a chave " + keyCond + " tenha o valor esperado.");
+            if (Arrays.equals(armazenamento.get(keyCond), valueCond)) {
+                System.out.println("GETWHEN: Condição já satisfeita para chave '" + keyCond + "'. Retornando diretamente o valor de '" + key + "'.");
+                return armazenamento.get(key);
+            }
+
+            Map<String, Condition> valorConditions = chaveValorConditions.computeIfAbsent(keyCond, k -> new HashMap<>());
+    
+            String valorCondString = Arrays.toString(valueCond);
+
+            Condition cond = valorConditions.computeIfAbsent(valorCondString, v -> keyValueStoreLock.newCondition());
+
+
             while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
                 try {
-                    cond.await(); // espera por mudanças específicas em keyCond
+                    cond.await(); 
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt(); 
+                    Thread.currentThread().interrupt();
                     return null;
                 }
             }
-            // Retorna o valor associado à chave solicitada
+    
+            System.out.println("GETWHEN: A condição foi satisfeita para a chave: " + keyCond + "'. Retornei o valor da chave: " + key + "'.");  
+
             return armazenamento.get(key);
         } finally {
             keyValueStoreLock.unlock();
         }
     }
+
     
 }
-        
-        /*
-         * 
-         private static byte[] handleGetWhen(String key, String keyCond, byte[] valueCond) {
-        keyValueStoreLock.lock(); // Bloqueia o acesso ao armazenamento
-        try {
-            while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
-                try {
-                    condition.await(); // Espera por uma alteração no armazenamento
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt(); 
-                    return null;
-                }
-            }
-            // dá o valor associado à chave solicitada
-            return armazenamento.get(key);
-        } finally {
-            keyValueStoreLock.unlock(); 
-        }
-    }
-         */
