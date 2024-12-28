@@ -1,15 +1,31 @@
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.LongAdder;
 
 public class ClienteTeste {
     private static final int NUM_CLIENTES = 10; // Número de clientes simultâneos
     private static final int NUM_OPERACOES = 10; // Operações por cliente
+    private static final ConcurrentMap<String, LongAdder> temposTotais = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, LongAdder> contadoresOperacoes = new ConcurrentHashMap<>();
+
+    static {
+        // Inicializa os contadores
+        temposTotais.put("PUT", new LongAdder());
+        temposTotais.put("GET", new LongAdder());
+        temposTotais.put("MULTIPUT", new LongAdder());
+        temposTotais.put("GETWHEN", new LongAdder());
+        contadoresOperacoes.put("PUT", new LongAdder());
+        contadoresOperacoes.put("GET", new LongAdder());
+        contadoresOperacoes.put("MULTIPUT", new LongAdder());
+        contadoresOperacoes.put("GETWHEN", new LongAdder());
+    }
 
     public static void main(String[] args) {
         ExecutorService executor = Executors.newFixedThreadPool(NUM_CLIENTES);
 
         for (int i = 0; i < NUM_CLIENTES; i++) {
+            System.out.println("Cliente " + i);
             executor.submit(() -> {
                 try {
                     Cliente cliente = new Cliente(12345); // Porta do servidor
@@ -17,46 +33,47 @@ public class ClienteTeste {
 
                     for (int j = 0; j < NUM_OPERACOES; j++) {
                         int operacao = random.nextInt(4); // Escolher operação aleatória
-                        String key = "chave" + random.nextInt(10); // Usar um conjunto limitado de chaves
+                        String key = "chave" + random.nextInt(10);
                         String value = "valor" + random.nextInt(10);
+
+                        long inicio, fim;
 
                         switch (operacao) {
                             case 0: // PUT
+                                inicio = System.nanoTime();
                                 cliente.put(key, value.getBytes());
-                                System.out.println("PUT: " + key + " -> " + value);
+                                fim = System.nanoTime();
+                                temposTotais.get("PUT").add(fim - inicio);
+                                contadoresOperacoes.get("PUT").increment();
                                 break;
                             case 1: // GET
-                                byte[] resultado = cliente.get(key);
-                                if (resultado != null) {
-                                    System.out.println("GET: " + key + " -> " + new String(resultado));
-                                }
+                                inicio = System.nanoTime();
+                                cliente.get(key);
+                                fim = System.nanoTime();
+                                temposTotais.get("GET").add(fim - inicio);
+                                contadoresOperacoes.get("GET").increment();
                                 break;
                             case 2: // MULTIPUT
                                 Map<String, byte[]> pairs = new HashMap<>();
-                                for (int k = 0; k < 3; k++) { // Adiciona 3 pares ao MULTIPUT
-                                    String multiKey = "chave" + random.nextInt(10);
-                                    String multiValue = "valor" + random.nextInt(10);
-                                    pairs.put(multiKey, multiValue.getBytes());
+                                for (int k = 0; k < 3; k++) {
+                                    pairs.put("chave" + random.nextInt(10), ("valor" + random.nextInt(10)).getBytes());
                                 }
+                                inicio = System.nanoTime();
                                 cliente.multiPut(pairs);
-                                System.out.println("MULTIPUT realizado.");
+                                fim = System.nanoTime();
+                                temposTotais.get("MULTIPUT").add(fim - inicio);
+                                contadoresOperacoes.get("MULTIPUT").increment();
                                 break;
                             case 3: // GETWHEN
-                                // Garante que o condKey está configurado corretamente
                                 String condKey = "chave" + random.nextInt(10);
                                 String expectedValue = "valor" + random.nextInt(10);
-
-                                // Configura a chave condicional
                                 cliente.put(condKey, expectedValue.getBytes());
-                                System.out.println("PUT para GETWHEN: " + condKey + " -> " + expectedValue);
-
-                                // Garante que o valor condicional estará disponível
                                 cliente.put(key, value.getBytes());
-
-                                byte[] getWhenResult = cliente.getWhen(key, condKey, expectedValue.getBytes());
-                                if (getWhenResult != null) {
-                                    System.out.println("GETWHEN: " + key + " -> " + new String(getWhenResult));
-                                }
+                                inicio = System.nanoTime();
+                                cliente.getWhen(key, condKey, expectedValue.getBytes());
+                                fim = System.nanoTime();
+                                temposTotais.get("GETWHEN").add(fim - inicio);
+                                contadoresOperacoes.get("GETWHEN").increment();
                                 break;
                         }
                     }
@@ -76,5 +93,17 @@ public class ClienteTeste {
         }
 
         System.out.println("Testes concluídos.");
+        exibirResultados();
+    }
+
+    private static void exibirResultados() {
+        temposTotais.forEach((operacao, tempoTotal) -> {
+            long totalOperacoes = contadoresOperacoes.get(operacao).sum();
+            if (totalOperacoes > 0) {
+                System.out.println(operacao + " - Latência Média: " + (tempoTotal.sum() / totalOperacoes) + " ns");
+            } else {
+                System.out.println(operacao + " - Nenhuma operação realizada.");
+            }
+        });
     }
 }

@@ -353,33 +353,47 @@ public class Servidor {
      */
 
     private static byte[] handleGetWhen(String key, String keyCond, byte[] valueCond) {
+        // Não bloqueie imediatamente para melhorar a concorrência
+        Map<String, Condition> valorConditions;
+        Condition cond;
         keyValueStoreLock.lock();
         try {
-            System.out.println("GETWHEN: O cliente está à espera que a chave " + keyCond + " tenha o valor esperado.");
+            System.out.println("GETWHEN: Cliente está à espera que a chave '" + keyCond + "' tenha o valor esperado.");
+            
+            // Verificação imediata da condição
             if (Arrays.equals(armazenamento.get(keyCond), valueCond)) {
-                System.out.println("GETWHEN: Condição já satisfeita para chave '" + keyCond + "'. Retornando diretamente o valor de '" + key + "'.");
-                return armazenamento.get(key);    // devolve diretamente o valor se a condição já está satisfeita 
+                System.out.println("GETWHEN: Condição já satisfeita. Retornando o valor.");
+                return armazenamento.get(key);
             }
-
-            // regista a condição e bloqueia a thread até que se satisfaça
-            Map<String, Condition> valorConditions = chaveValorConditions.computeIfAbsent(keyCond, k -> new HashMap<>());
+    
+            valorConditions = chaveValorConditions.computeIfAbsent(keyCond, k -> new HashMap<>());
             String valorCondString = Arrays.toString(valueCond);
-            Condition cond = valorConditions.computeIfAbsent(valorCondString, v -> keyValueStoreLock.newCondition());
-
-
+            cond = valorConditions.computeIfAbsent(valorCondString, v -> keyValueStoreLock.newCondition());
+        } finally {
+            keyValueStoreLock.unlock();
+        }
+    
+        // Espera pela condição sem bloquear outras operações
+        keyValueStoreLock.lock();
+        try {
             while (!Arrays.equals(armazenamento.get(keyCond), valueCond)) {
                 try {
-                    cond.await(); 
+                    if (!cond.await(5, TimeUnit.SECONDS)) {
+                        System.out.println("GETWHEN: Timeout ao esperar pela condição.");
+                        return null; // Timeout, condição não satisfeita
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     return null;
                 }
             }
-    
-            System.out.println("GETWHEN: A condição foi satisfeita para a chave: " + keyCond + "'. Retornei o valor da chave: " + key + "'.");  
+            System.out.println("GETWHEN: Condição satisfeita. Retornando o valor.");
             return armazenamento.get(key);
         } finally {
             keyValueStoreLock.unlock();
         }
-    }   
+    }
+    
+
+    
 }
