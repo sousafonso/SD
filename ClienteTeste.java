@@ -1,24 +1,11 @@
-/*
- * Nome: ClienteTeste.java
- * Descrição: testa o desempenho do servidor no serviço de armazenamento partilhado.
- */
-
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.LongAdder;
 
-/*
- * Classe ClienteTeste
- * 
- * Esta clase simula vários clientes a conectarem-se ao servidor, cada um a realizar 
- * várias operações de leitura e escrita no servidor. É depois medido o desempenho de
- * acordo com a latência média para cada tipo de funcionalidade. 
- */
-
 public class ClienteTeste {
     private static final int NUM_CLIENTES = 10; // Número de clientes simultâneos
-    private static final int NUM_OPERACOES = 10; // Operações por cliente
+    private static final int NUM_OPERACOES = 1000; // Operações por cliente
     private static final ConcurrentMap<String, LongAdder> temposTotais = new ConcurrentHashMap<>();
     private static final ConcurrentMap<String, LongAdder> contadoresOperacoes = new ConcurrentHashMap<>();
 
@@ -43,7 +30,7 @@ public class ClienteTeste {
             System.out.println("Cliente " + i);
             executor.submit(() -> {
                 try {
-                    Cliente cliente = new Cliente(12345); 
+                    Cliente cliente = new Cliente(12345); // Porta do servidor
                     Random random = new Random();
 
                     for (int j = 0; j < NUM_OPERACOES; j++) {
@@ -122,7 +109,6 @@ public class ClienteTeste {
         exibirResultados();
     }
 
-    // exibe os resultados dos testes, incluindo a latência média para cada operação
     private static void exibirResultados() {
         temposTotais.forEach((operacao, tempoTotal) -> {
             long totalOperacoes = contadoresOperacoes.get(operacao).sum();
