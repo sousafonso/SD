@@ -1,3 +1,9 @@
+/*
+ * Nome: Servidor.java
+ * Descrição: implementação de um servidor para um sistema de armazenamento de dados partilhado.
+ */
+
+
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -6,17 +12,23 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+/*
+ * Classe Servidor
+ * 
+ * Esta classe implementa o lado do servidor no sistema de armazenamento, suportando as 
+ * funcionalidades PUT, GET, MULTIPUT, MULTIGET, GETWHEN e sendo capaz de realizar
+ * comunicações com os clientes.
+ */ 
+
 public class Servidor {
     private static final Map<String, byte[]> armazenamento = new ConcurrentHashMap<>();
     private static final Map<String, String> utilizadores = new ConcurrentHashMap<>(); 
-    private static final int MAX_SESSOES = 100; 
+    private static final int MAX_SESSOES = 100; // máximo de conexões silmutâneas
     private static final Lock lock = new ReentrantLock();
-    // private static final Lock sessionLock = new ReentrantLock();
-    private static final Lock keyValueStoreLock = new ReentrantLock();
-    // private static final Condition sessionCondition = sessionLock.newCondition();
+    private static final Lock keyValueStoreLock = new ReentrantLock(); // lock para operações no armazenamento
     private static final Condition condition = lock.newCondition();
-    private static int currentSessions = 0;
-    private static final Map<String, Map<String, Condition>> chaveValorConditions = new ConcurrentHashMap<>();
+    private static int currentSessions = 0;   // sessões ativas
+    private static final Map<String, Map<String, Condition>> chaveValorConditions = new ConcurrentHashMap<>();    // usado para o GETWHEN
 
 
     public static void main(String[] args) {
@@ -25,6 +37,7 @@ public class Servidor {
             while (true) {
                 Socket clienteSocket = serverSocket.accept();
 
+                // gere o número máximo de sessões simultâneas
                 new Thread(() -> {
                     lock.lock();
                     try {
@@ -46,7 +59,7 @@ public class Servidor {
                         lock.lock();
                         try {
                             currentSessions--;
-                            condition.signal();
+                            condition.signal();    // acorda uma thread à espera de conexão
                         } finally {
                             lock.unlock();
                         }
@@ -58,13 +71,34 @@ public class Servidor {
         }
     }
 
+    /*
+     * Método autenticarUser
+     * 
+     * Gere a autenticação dos utilizadores e faz a sua verificação dado o seu nome
+     * e palavra passe.
+     */
+
     private static boolean autenticarUser(String nome, String senha) {
         return senha.equals(utilizadores.get(nome));
     }
 
+    /*
+     * Método registarUser
+     * 
+     * Gere o registo de utilizadores e armazena-os num mapa tendo em conta o seu
+     * nome e palavra passe.
+     */
+
     private static boolean registarUser(String nome, String senha) {
         return utilizadores.putIfAbsent(nome, senha) == null;
     }
+
+    /*
+     * Método handleClient
+     * 
+     * Este método permite tratar a troca de informação entre o cliente e o servidor,
+     * sendo capaz de processar os comandos que são enviados pelos clientes.
+     */
 
     public static void handleClient(Socket socket) {
         try (socket;
@@ -73,7 +107,7 @@ public class Servidor {
     
             while (true) {
                 try {
-                    String comando = entrada.readUTF();
+                    String comando = entrada.readUTF();        // lê o comando enviado pelo cliente
                     switch (comando) {
                         case "REGISTAR":
                             String novoUtilizador = entrada.readUTF();
@@ -112,7 +146,7 @@ public class Servidor {
                                 saida.writeInt(resultado.length);
                                 saida.write(resultado);
                             } else {
-                                saida.writeInt(-1);
+                                saida.writeInt(-1);     // chave não encontrada
                             }
                             break;
     
@@ -138,7 +172,7 @@ public class Servidor {
                             }
                             break;
     
-                        case "EXIT":
+                        case "Sair":
                             System.out.println("Cliente desconectado.");
                             return; 
     
@@ -161,6 +195,12 @@ public class Servidor {
         }
     }
 
+    /*
+     * Método handlePut
+     * 
+     * Responsável por inserir ou atualizar um par chave-valor.
+     */
+
     private static void handlePut(String key, byte[] value) {
         keyValueStoreLock.lock();
         try {
@@ -168,6 +208,7 @@ public class Servidor {
     
             Map<String, Condition> valorConditions = chaveValorConditions.get(key);
             
+            // acorda threads para a condição específica
             if (valorConditions != null) {
                 String valorString = Arrays.toString(value);
                 Condition cond = valorConditions.get(valorString);
@@ -180,6 +221,12 @@ public class Servidor {
         }
     }
 
+    /*
+     * Método handleGet
+     * 
+     * Devolve o valor associado a uma chave.
+     */
+
     private static byte[] handleGet(String key) {
         keyValueStoreLock.lock();
         try {
@@ -190,15 +237,21 @@ public class Servidor {
         }
     }
 
+    /*
+     * Método handleMultiPut
+     * 
+     * Este método insere vários pares chave-valor de uma vez só e, em caso de erro,
+     * reverte as alterações.
+     */
+
     private static void handleMultiPut(DataInputStream in, DataOutputStream out) throws IOException {
         int numPairs = in.readInt();
         Map<String, byte[]> tempStore = new HashMap<>();
         Map<String, byte[]> backupStore = new HashMap<>();
 
-
         keyValueStoreLock.lock();
         try {
-            // Lê todas as entradas do cliente
+            // lê todas as entradas do cliente
             for (int i = 0; i < numPairs; i++) {
                 String key = in.readUTF();
                 int valueSize = in.readInt();
@@ -207,7 +260,7 @@ public class Servidor {
                 tempStore.put(key, value);
             }
 
-            // fazer backup das chaves existentes
+            // faz backup das chaves existentes
             for (String key : tempStore.keySet()) {
                 if (armazenamento.containsKey(key)) {
                     backupStore.put(key, armazenamento.get(key));
@@ -216,6 +269,7 @@ public class Servidor {
                 }
             }
 
+            // atualiza o armazenamento
             for (Map.Entry<String, byte[]> entry : tempStore.entrySet()) {
                 String key = entry.getKey();
                 byte[] value = entry.getValue();
@@ -228,14 +282,14 @@ public class Servidor {
                     String valorString = Arrays.toString(value);
                     Condition cond = valorConditions.get(valorString);
                     if (cond != null) {
-                        cond.signalAll(); // Acorda threads aguardando por esta combinação
+                        cond.signalAll(); // acorda threads para a condição específica
                     }
                 }
             }
     
             out.writeUTF("Operação MultiPut com sucesso.");
         } catch (Exception e) {
-            // Reverter alterações em caso de falha
+            // reverte as alterações em caso de erro
             for (Map.Entry<String, byte[]> entry : backupStore.entrySet()) {
                 if (entry.getValue() == null) {
                     armazenamento.remove(entry.getKey());
@@ -248,6 +302,12 @@ public class Servidor {
             keyValueStoreLock.unlock();
         }
     }
+
+    /*
+     * Método handleMultiGet
+     * 
+     * Devolve o conjunto de pares chave-valor associados a um conjunto de chaves.
+     */
 
     private static void handleMultiGet(DataInputStream in, DataOutputStream out) throws IOException {
         int numKeys = in.readInt();
@@ -273,7 +333,7 @@ public class Servidor {
                 keyValueStoreLock.unlock();     
             }
         
-            // Enviar os resultados ao cliente
+            // envia os resultados ao cliente
             out.writeInt(result.size());
             for (Map.Entry<String, byte[]> entry : result.entrySet()) {
                 out.writeUTF(entry.getKey());
@@ -281,10 +341,16 @@ public class Servidor {
                 out.write(entry.getValue());
             }
         } catch (Exception e) {
-            // Em caso de erro, não enviar resultados parciais
             out.writeInt(0);
         }
     }
+
+    /*
+     * Método handleGetWhen
+     * 
+     * Devolve o valor de uma chave "key" quando uma dada chave "keycond" assume um
+     * valor específico "valuecond", bloqueando enquanto tal condição não é satisfeita.
+     */
 
     private static byte[] handleGetWhen(String key, String keyCond, byte[] valueCond) {
         keyValueStoreLock.lock();
@@ -292,13 +358,12 @@ public class Servidor {
             System.out.println("GETWHEN: O cliente está à espera que a chave " + keyCond + " tenha o valor esperado.");
             if (Arrays.equals(armazenamento.get(keyCond), valueCond)) {
                 System.out.println("GETWHEN: Condição já satisfeita para chave '" + keyCond + "'. Retornando diretamente o valor de '" + key + "'.");
-                return armazenamento.get(key);
+                return armazenamento.get(key);    // devolve diretamente o valor se a condição já está satisfeita 
             }
 
+            // regista a condição e bloqueia a thread até que se satisfaça
             Map<String, Condition> valorConditions = chaveValorConditions.computeIfAbsent(keyCond, k -> new HashMap<>());
-    
             String valorCondString = Arrays.toString(valueCond);
-
             Condition cond = valorConditions.computeIfAbsent(valorCondString, v -> keyValueStoreLock.newCondition());
 
 
@@ -312,12 +377,9 @@ public class Servidor {
             }
     
             System.out.println("GETWHEN: A condição foi satisfeita para a chave: " + keyCond + "'. Retornei o valor da chave: " + key + "'.");  
-
             return armazenamento.get(key);
         } finally {
             keyValueStoreLock.unlock();
         }
-    }
-
-    
+    }   
 }
